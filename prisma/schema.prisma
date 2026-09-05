@@ -1,0 +1,138 @@
+enum DeliveryStatus {
+  NOT_DELIVERED
+  DELIVERED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id Int @id @default(autoincrement())
+
+  companyName String
+  city        String?
+  address     String?
+  notes       String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts CustomerContact[]
+
+  orders Order[]
+}
+
+model CustomerContact {
+  id Int @id @default(autoincrement())
+
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  contactName String
+  phone       String?
+  email       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id Int @id @default(autoincrement())
+
+  code String @unique
+  name String
+
+  category String
+  material String?
+  color String?
+
+  length Float?
+  width Float?
+  height Float?
+  weight Float?
+
+  basePrice Float
+
+  orderItems OrderItem[]
+
+  unit String
+
+  description String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id Int @id @default(autoincrement())
+
+  customerId Int
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  deliveryStatus DeliveryStatus @default(NOT_DELIVERED)
+
+  notes String?
+
+  discount Float? @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
+
+  payments Payment[]
+
+  deliveryDate DateTime?
+}
+
+model OrderItem {
+  id Int @id @default(autoincrement())
+
+  orderId Int
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId Int
+  product Product @relation(fields: [productId], references: [id])
+
+  quantity Int
+
+  unitPrice Float
+
+  lineTotal Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Payment {
+  id Int @id @default(autoincrement())
+
+  orderId Int
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  amount Float
+
+  paymentMethod PaymentMethod
+
+  paymentDate DateTime @default(now())
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
