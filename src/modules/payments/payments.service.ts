@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+    Injectable,
+    NotFoundException,
+    BadRequestException,
+} from '@nestjs/common';
 
 import { PrismaService } from '../../database/prisma.service';
 
@@ -45,6 +49,34 @@ export class PaymentsService {
     }
 
     async create(createPaymentDto: CreatePaymentDto) {
+
+        const order = await this.prisma.order.findUnique({
+            where: {
+                id: createPaymentDto.orderId,
+            },
+
+            include: {
+                payments: true,
+            },
+        });
+
+        if (!order) {
+            throw new NotFoundException('Order not found.');
+        }
+
+        const amountPaid = order.payments.reduce(
+            (sum, payment) => sum + payment.amount,
+            0,
+        );
+
+        const remainingBalance = order.total - amountPaid;
+
+        if (createPaymentDto.amount > remainingBalance) {
+            throw new BadRequestException(
+                'Payment exceeds the remaining balance.',
+            );
+        }
+
         return this.prisma.payment.create({
             data: {
                 orderId: createPaymentDto.orderId,

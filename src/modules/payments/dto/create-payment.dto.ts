@@ -18,13 +18,15 @@ import { PaymentMethod } from '@prisma/client';
 export class CreatePaymentDto {
     @ApiProperty({
         example: 1,
+        description: 'ID of the order receiving this payment.',
     })
     @IsInt()
     @Min(1)
     orderId!: number;
 
     @ApiProperty({
-        example: 15000000.800,
+        example: 1500000,
+        description: 'Amount paid by the customer.',
     })
     @IsNumber()
     @IsPositive()
@@ -33,12 +35,14 @@ export class CreatePaymentDto {
     @ApiProperty({
         enum: PaymentMethod,
         example: PaymentMethod.CASH,
+        description: 'Payment method used.',
     })
     @IsEnum(PaymentMethod)
     paymentMethod!: PaymentMethod;
 
     @ApiPropertyOptional({
         example: 'First payment',
+        description: 'Optional notes about this payment.',
     })
     @IsOptional()
     @IsString()

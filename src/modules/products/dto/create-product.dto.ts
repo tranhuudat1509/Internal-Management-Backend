@@ -78,13 +78,12 @@ export class CreateProductDto {
   @Min(0)
   weight?: number;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 350000,
   })
-  @IsOptional()
   @IsNumber()
   @IsPositive()
-  basePrice?: number;
+  basePrice!: number;
 
   @ApiProperty({
     example: 'Piece',

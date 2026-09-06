@@ -80,6 +80,14 @@ export class OrdersService {
         lineTotal: item.quantity * product.basePrice,
       });
     }
+
+    const subtotal = orderItems.reduce(
+      (sum, item) => sum + item.lineTotal,
+      0,
+    );
+
+    const total = subtotal - (createOrderDto.discount ?? 0);
+
     return this.prisma.order.create({
       data: {
         customerId: createOrderDto.customerId,
@@ -87,6 +95,10 @@ export class OrdersService {
         notes: createOrderDto.notes,
 
         discount: createOrderDto.discount ?? 0,
+
+        subtotal,
+
+        total,
 
         items: {
           create: orderItems,

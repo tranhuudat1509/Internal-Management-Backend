@@ -28,13 +28,6 @@ export class CreateOrderItemDto {
   @IsInt()
   @Min(1)
   quantity!: number;
-
-  @ApiProperty({
-    example: 3,
-  })
-  @IsNumber()
-  @IsPositive()
-  unitPrice!: number;
 }
 
 export class CreateOrderDto {
@@ -65,7 +58,6 @@ export class CreateOrderDto {
       {
         productId: 1,
         quantity: 2,
-        unitPrice: 500000,
       },
     ],
   })
