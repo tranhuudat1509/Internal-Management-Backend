@@ -1,0 +1,30 @@
+import {
+    IsInt,
+    Min,
+} from 'class-validator';
+
+import { ApiProperty } from '@nestjs/swagger';
+
+export class CreateOrderItemDto {
+
+    @ApiProperty({
+        example: 1,
+    })
+    @IsInt()
+    @Min(1)
+    orderId!: number;
+
+    @ApiProperty({
+        example: 2,
+    })
+    @IsInt()
+    @Min(1)
+    productId!: number;
+
+    @ApiProperty({
+        example: 5,
+    })
+    @IsInt()
+    @Min(1)
+    quantity!: number;
+}

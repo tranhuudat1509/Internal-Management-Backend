@@ -5,7 +5,9 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { calculateOrderFinancialSummary } from './helpers/order-financial-summary';
+import { recalculateOrderTotals } from './helpers/recalculate-order';
 import { DeliveryStatus } from '@prisma/client';
+import { ensureOrderEditable } from './helpers/ensure-order-editable';
 
 @Injectable()
 export class OrdersService {
@@ -60,6 +62,7 @@ export class OrdersService {
       order.total,
       order.payments,
     );
+
     return {
       ...order,
       financialSummary,
@@ -67,6 +70,7 @@ export class OrdersService {
   }
 
   async create(createOrderDto: CreateOrderDto) {
+
     const customer = await this.prisma.customer.findUnique({
       where: {
         id: createOrderDto.customerId,
@@ -74,44 +78,12 @@ export class OrdersService {
     });
 
     if (!customer) {
-      throw new NotFoundException('Customer not found.');
+      throw new NotFoundException(
+        'Customer not found.',
+      );
     }
 
-    const orderItems: {
-      productId: number;
-      quantity: number;
-      unitPrice: number;
-      lineTotal: number;
-    }[] = [];
-
-    for (const item of createOrderDto.items) {
-      const product = await this.prisma.product.findUnique({
-        where: {
-          id: item.productId,
-        },
-      });
-
-      if (!product) {
-        throw new NotFoundException(
-          `Product with ID ${item.productId} not found.`,
-        );
-      }
-      orderItems.push({
-        productId: product.id,
-        quantity: item.quantity,
-        unitPrice: product.basePrice,
-        lineTotal: item.quantity * product.basePrice,
-      });
-    }
-
-    const subtotal = orderItems.reduce(
-      (sum, item) => sum + item.lineTotal,
-      0,
-    );
-
-    const total = subtotal - (createOrderDto.discount ?? 0);
-
-    return this.prisma.order.create({
+    const order = await this.prisma.order.create({
       data: {
         customerId: createOrderDto.customerId,
 
@@ -130,41 +102,18 @@ export class OrdersService {
         notes: createOrderDto.notes,
 
         discount: createOrderDto.discount ?? 0,
-
-        subtotal,
-
-        total,
-
-        items: {
-          create: orderItems,
-        },
-      },
-
-      include: {
-        customer: true,
-
-        items: {
-          include: {
-            product: true,
-          },
-        },
-
-        payments: true,
       },
     });
+
+    return this.findOne(order.id);
   }
 
   async update(id: number, updateOrderDto: UpdateOrderDto) {
 
-    const existingOrder = await this.prisma.order.findUnique({
-      where: {
-        id,
-      },
-    });
-
-    if (!existingOrder) {
-      throw new NotFoundException('Order not found.');
-    }
+    const existingOrder = await ensureOrderEditable(
+      this.prisma,
+      id,
+    );
 
     let deliveryStatus = existingOrder.deliveryStatus;
     let deliveryDate = existingOrder.deliveryDate;
@@ -180,7 +129,7 @@ export class OrdersService {
       deliveryDate = null;
     }
 
-    return this.prisma.order.update({
+    await this.prisma.order.update({
       where: {
         id,
       },
@@ -194,22 +143,16 @@ export class OrdersService {
         deliveryDate,
 
         notes: updateOrderDto.notes,
-
         discount: updateOrderDto.discount,
       },
-
-      include: {
-        customer: true,
-
-        items: {
-          include: {
-            product: true,
-          },
-        },
-
-        payments: true,
-      },
     });
+
+    await recalculateOrderTotals(
+      this.prisma,
+      id,
+    );
+
+    return this.findOne(id);
   }
 
   async remove(id: number) {
