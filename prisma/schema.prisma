@@ -9,6 +9,12 @@ enum PaymentMethod {
   OTHER
 }
 
+enum DimensionUnit {
+  CM
+  MM
+  M
+}
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -59,12 +65,14 @@ model Product {
   material String?
   color String?
 
-  length Float?
-  width Float?
-  height Float?
-  weight Float?
+  length          Int?
+  width           Int?
+  height          Int?
 
-  basePrice Float
+  dimensionUnit   DimensionUnit @default(CM)
+
+  weight          Float?
+  basePrice       Float
 
   orderItems OrderItem[]
 
@@ -94,14 +102,16 @@ model Order {
 
   total Float @default(0)
 
+  orderDate DateTime @default(now())
+
+  deliveryDate DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   items OrderItem[]
 
   payments Payment[]
-
-  deliveryDate DateTime?
 }
 
 model OrderItem {

@@ -27,7 +27,7 @@ export class PaymentsService {
     }
 
     async findOne(id: number) {
-        return this.prisma.payment.findUnique({
+        const payment = await this.prisma.payment.findUnique({
             where: {
                 id,
             },
@@ -42,10 +42,18 @@ export class PaymentsService {
                                 product: true,
                             },
                         },
+
+                        payments: true,
                     },
                 },
-            }
+            },
         });
+
+        if (!payment) {
+            throw new NotFoundException('Payment not found.');
+        }
+
+        return payment;
     }
 
     async create(createPaymentDto: CreatePaymentDto) {
@@ -99,6 +107,46 @@ export class PaymentsService {
     }
 
     async update(id: number, updatePaymentDto: UpdatePaymentDto) {
+
+        const existingPayment = await this.prisma.payment.findUnique({
+            where: {
+                id,
+            },
+        });
+
+        if (!existingPayment) {
+            throw new NotFoundException('Payment not found.');
+        }
+
+        const order = await this.prisma.order.findUnique({
+            where: {
+                id: existingPayment.orderId,
+            },
+
+            include: {
+                payments: true,
+            },
+        });
+
+        if (!order) {
+            throw new NotFoundException('Order not found.');
+        }
+
+        const amountPaidExcludingCurrent = order.payments
+            .filter(payment => payment.id !== id)
+            .reduce((sum, payment) => sum + payment.amount, 0);
+
+        const newAmount = updatePaymentDto.amount ?? existingPayment.amount;
+
+        const remainingBalance =
+            order.total - amountPaidExcludingCurrent;
+
+        if (newAmount > remainingBalance) {
+            throw new BadRequestException(
+                'Payment exceeds the remaining balance.',
+            );
+        }
+
         return this.prisma.payment.update({
             where: {
                 id,
@@ -121,6 +169,16 @@ export class PaymentsService {
     }
 
     async remove(id: number) {
+        const payment = await this.prisma.payment.findUnique({
+            where: {
+                id,
+            },
+        });
+
+        if (!payment) {
+            throw new NotFoundException('Payment not found.');
+        }
+
         return this.prisma.payment.delete({
             where: {
                 id,

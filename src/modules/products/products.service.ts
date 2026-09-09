@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { DimensionUnit } from '@prisma/client';
 
 @Injectable()
 export class ProductsService {
@@ -12,9 +13,17 @@ export class ProductsService {
   }
 
   async findOne(id: number) {
-    return this.prisma.product.findUnique({
-      where: { id },
+    const product = await this.prisma.product.findUnique({
+      where: {
+        id,
+      },
     });
+
+    if (!product) {
+      throw new NotFoundException('Product not found.');
+    }
+
+    return product;
   }
 
   async create(createProductDto: CreateProductDto) {
@@ -28,6 +37,8 @@ export class ProductsService {
         length: createProductDto.length,
         width: createProductDto.width,
         height: createProductDto.height,
+        dimensionUnit:
+          createProductDto.dimensionUnit ?? DimensionUnit.CM,
         weight: createProductDto.weight,
         basePrice: createProductDto.basePrice,
         unit: createProductDto.unit,
@@ -38,8 +49,20 @@ export class ProductsService {
   }
 
   async update(id: number, updateProductDto: UpdateProductDto) {
+    const product = await this.prisma.product.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found.');
+    }
+
     return this.prisma.product.update({
-      where: { id },
+      where: {
+        id,
+      },
 
       data: {
         code: updateProductDto.code,
@@ -50,6 +73,7 @@ export class ProductsService {
         length: updateProductDto.length,
         width: updateProductDto.width,
         height: updateProductDto.height,
+        dimensionUnit: updateProductDto.dimensionUnit,
         weight: updateProductDto.weight,
         basePrice: updateProductDto.basePrice,
         unit: updateProductDto.unit,
@@ -60,8 +84,20 @@ export class ProductsService {
   }
 
   async remove(id: number) {
+    const product = await this.prisma.product.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found.');
+    }
+
     return this.prisma.product.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
   }
 }

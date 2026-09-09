@@ -4,13 +4,15 @@ import { PrismaService } from '../../database/prisma.service';
 
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import { calculateOrderFinancialSummary } from './helpers/order-financial-summary';
+import { DeliveryStatus } from '@prisma/client';
 
 @Injectable()
 export class OrdersService {
   constructor(private prisma: PrismaService) { }
 
   async findAll() {
-    return this.prisma.order.findMany({
+    const orders = await this.prisma.order.findMany({
       include: {
         customer: true,
         items: {
@@ -21,10 +23,18 @@ export class OrdersService {
         payments: true,
       },
     });
+
+    return orders.map((order) => ({
+      ...order,
+      financialSummary: calculateOrderFinancialSummary(
+        order.total,
+        order.payments,
+      ),
+    }));
   }
 
   async findOne(id: number) {
-    return this.prisma.order.findUnique({
+    const order = await this.prisma.order.findUnique({
       where: {
         id,
       },
@@ -41,6 +51,19 @@ export class OrdersService {
         payments: true,
       },
     });
+
+    if (!order) {
+      throw new NotFoundException('Order not found.');
+    }
+
+    const financialSummary = calculateOrderFinancialSummary(
+      order.total,
+      order.payments,
+    );
+    return {
+      ...order,
+      financialSummary,
+    };
   }
 
   async create(createOrderDto: CreateOrderDto) {
@@ -92,6 +115,18 @@ export class OrdersService {
       data: {
         customerId: createOrderDto.customerId,
 
+        orderDate: createOrderDto.orderDate
+          ? new Date(createOrderDto.orderDate)
+          : undefined,
+
+        deliveryStatus: createOrderDto.delivered
+          ? DeliveryStatus.DELIVERED
+          : DeliveryStatus.NOT_DELIVERED,
+
+        deliveryDate: createOrderDto.delivered
+          ? new Date()
+          : null,
+
         notes: createOrderDto.notes,
 
         discount: createOrderDto.discount ?? 0,
@@ -120,13 +155,46 @@ export class OrdersService {
   }
 
   async update(id: number, updateOrderDto: UpdateOrderDto) {
+
+    const existingOrder = await this.prisma.order.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!existingOrder) {
+      throw new NotFoundException('Order not found.');
+    }
+
+    let deliveryStatus = existingOrder.deliveryStatus;
+    let deliveryDate = existingOrder.deliveryDate;
+
+    if (updateOrderDto.delivered === true) {
+      deliveryStatus = DeliveryStatus.DELIVERED;
+
+      if (existingOrder.deliveryStatus !== DeliveryStatus.DELIVERED) {
+        deliveryDate = new Date();
+      }
+    } else if (updateOrderDto.delivered === false) {
+      deliveryStatus = DeliveryStatus.NOT_DELIVERED;
+      deliveryDate = null;
+    }
+
     return this.prisma.order.update({
       where: {
         id,
       },
 
       data: {
+        orderDate: updateOrderDto.orderDate
+          ? new Date(updateOrderDto.orderDate)
+          : undefined,
+
+        deliveryStatus,
+        deliveryDate,
+
         notes: updateOrderDto.notes,
+
         discount: updateOrderDto.discount,
       },
 
@@ -145,6 +213,16 @@ export class OrdersService {
   }
 
   async remove(id: number) {
+    const order = await this.prisma.order.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found.');
+    }
+
     return this.prisma.order.delete({
       where: {
         id,

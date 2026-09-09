@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsEnum,
   IsNumber,
   IsOptional,
   IsString,
@@ -7,6 +8,8 @@ import {
   IsPositive,
   Min,
 } from 'class-validator';
+
+import { DimensionUnit } from '@prisma/client';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -69,6 +72,15 @@ export class CreateProductDto {
   @IsNumber()
   @Min(1)
   height?: number;
+
+  @ApiPropertyOptional({
+    enum: DimensionUnit,
+    example: DimensionUnit.CM,
+    default: DimensionUnit.CM,
+  })
+  @IsOptional()
+  @IsEnum(DimensionUnit)
+  dimensionUnit?: DimensionUnit;
 
   @ApiPropertyOptional({
     example: 18,
