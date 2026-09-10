@@ -6,8 +6,10 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { calculateOrderFinancialSummary } from './helpers/order-financial-summary';
 import { recalculateOrderTotals } from './helpers/recalculate-order';
-import { DeliveryStatus } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { ensureOrderEditable } from './helpers/ensure-order-editable';
+import { getEffectiveProductPrice } from './helpers/get-effective-product-price';
+import { calculateOrderItemTotal } from './helpers/calculate-order-item-total';
 
 @Injectable()
 export class OrdersService {
@@ -83,6 +85,52 @@ export class OrdersService {
       );
     }
 
+    const orderItems: {
+      productId: number;
+      quantity: number;
+      unitPrice: number;
+      lineTotal: number;
+    }[] = [];
+
+    for (const item of createOrderDto.items) {
+      const product =
+        await this.prisma.product.findUnique({
+          where: {
+            id: item.productId,
+          },
+        });
+
+      if (!product) {
+        throw new NotFoundException(
+          `Product ${item.productId} not found.`,
+        );
+      }
+
+      const unitPrice = await getEffectiveProductPrice(
+        this.prisma,
+        customer.id,
+        product.id,
+      );
+
+      if (unitPrice === null) {
+        throw new NotFoundException(
+          `Product ${item.productId} not found.`,
+        );
+      }
+
+      const lineTotal = calculateOrderItemTotal(
+        item.quantity,
+        unitPrice,
+      );
+
+      orderItems.push({
+        productId: product.id,
+        quantity: item.quantity,
+        unitPrice,
+        lineTotal,
+      });
+    }
+
     const order = await this.prisma.order.create({
       data: {
         customerId: createOrderDto.customerId,
@@ -91,19 +139,29 @@ export class OrdersService {
           ? new Date(createOrderDto.orderDate)
           : undefined,
 
-        deliveryStatus: createOrderDto.delivered
-          ? DeliveryStatus.DELIVERED
-          : DeliveryStatus.NOT_DELIVERED,
+        status:
+          createOrderDto.status ??
+          OrderStatus.IN_PROGRESS,
 
-        deliveryDate: createOrderDto.delivered
-          ? new Date()
-          : null,
+        deliveryDate:
+          createOrderDto.status === OrderStatus.DELIVERED
+            ? new Date()
+            : null,
 
         notes: createOrderDto.notes,
 
         discount: createOrderDto.discount ?? 0,
+
+        items: {
+          create: orderItems,
+        },
       },
     });
+
+    await recalculateOrderTotals(
+      this.prisma,
+      order.id,
+    );
 
     return this.findOne(order.id);
   }
@@ -115,18 +173,23 @@ export class OrdersService {
       id,
     );
 
-    let deliveryStatus = existingOrder.deliveryStatus;
+    let status = existingOrder.status;
     let deliveryDate = existingOrder.deliveryDate;
 
-    if (updateOrderDto.delivered === true) {
-      deliveryStatus = DeliveryStatus.DELIVERED;
+    if (updateOrderDto.status !== undefined) {
 
-      if (existingOrder.deliveryStatus !== DeliveryStatus.DELIVERED) {
+      status = updateOrderDto.status;
+
+      if (
+        status === OrderStatus.DELIVERED &&
+        existingOrder.status !== OrderStatus.DELIVERED
+      ) {
         deliveryDate = new Date();
       }
-    } else if (updateOrderDto.delivered === false) {
-      deliveryStatus = DeliveryStatus.NOT_DELIVERED;
-      deliveryDate = null;
+
+      if (status !== OrderStatus.DELIVERED) {
+        deliveryDate = null;
+      }
     }
 
     await this.prisma.order.update({
@@ -139,7 +202,7 @@ export class OrdersService {
           ? new Date(updateOrderDto.orderDate)
           : undefined,
 
-        deliveryStatus,
+        status,
         deliveryDate,
 
         notes: updateOrderDto.notes,

@@ -1,6 +1,7 @@
-enum DeliveryStatus {
-  NOT_DELIVERED
+enum OrderStatus {
+  IN_PROGRESS
   DELIVERED
+  CANCELLED
 }
 
 enum PaymentMethod {
@@ -39,6 +40,8 @@ model Customer {
   contacts CustomerContact[]
 
   orders Order[]
+
+  specialPrices CustomerProductPrice[]
 }
 
 model CustomerContact {
@@ -63,18 +66,17 @@ model Product {
 
   category String
   material String?
-  color String?
+  color    String?
 
-  length          Int?
-  width           Int?
-  height          Int?
+  length Int?
+  width  Int?
+  height Int?
 
-  dimensionUnit   DimensionUnit @default(CM)
+  dimensionUnit DimensionUnit @default(CM)
 
-  weight          Float?
-  basePrice       Float
+  weight Float?
 
-  orderItems OrderItem[]
+  basePrice Float
 
   unit String
 
@@ -84,27 +86,31 @@ model Product {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  orderItems OrderItem[]
+
+  specialPrices CustomerProductPrice[]
 }
 
 model Order {
   id Int @id @default(autoincrement())
 
   customerId Int
-  customer Customer @relation(fields: [customerId], references: [id])
+  customer   Customer @relation(fields: [customerId], references: [id])
 
-  deliveryStatus DeliveryStatus @default(NOT_DELIVERED)
-
-  notes String?
-
-  discount Float? @default(0)
-
-  subtotal Float @default(0)
-
-  total Float @default(0)
+  status OrderStatus @default(IN_PROGRESS)
 
   orderDate DateTime @default(now())
 
   deliveryDate DateTime?
+
+  notes String?
+
+  discount Float @default(0)
+
+  subtotal Float @default(0)
+
+  total Float @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -118,10 +124,10 @@ model OrderItem {
   id Int @id @default(autoincrement())
 
   orderId Int
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   productId Int
-  product Product @relation(fields: [productId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 
   quantity Int
 
@@ -137,7 +143,7 @@ model Payment {
   id Int @id @default(autoincrement())
 
   orderId Int
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   amount Float
 
@@ -149,4 +155,24 @@ model Payment {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model CustomerProductPrice {
+  id Int @id @default(autoincrement())
+
+  customerId Int
+  productId  Int
+
+  price Float
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
 }

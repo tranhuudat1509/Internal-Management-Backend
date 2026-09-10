@@ -3,7 +3,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 
-import { DeliveryStatus } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 
 import { PrismaService } from '../../../database/prisma.service';
 
@@ -23,9 +23,12 @@ export async function ensureOrderEditable(
         );
     }
 
-    if (order.deliveryStatus === DeliveryStatus.DELIVERED) {
+    if (
+        order.status === OrderStatus.DELIVERED ||
+        order.status === OrderStatus.CANCELLED
+    ) {
         throw new BadRequestException(
-            'Delivered orders cannot be modified.',
+            'Delivered or cancelled orders cannot be modified.',
         );
     }
 

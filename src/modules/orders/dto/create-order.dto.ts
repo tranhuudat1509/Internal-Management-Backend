@@ -9,11 +9,14 @@ import {
   Min,
   ArrayMinSize,
   IsBoolean,
+  IsEnum,
 } from 'class-validator';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { Type } from 'class-transformer';
+
+import { OrderStatus } from '@prisma/client';
 
 export class CreateOrderItemDto {
   @ApiProperty({
@@ -47,11 +50,12 @@ export class CreateOrderDto {
   orderDate?: string;
 
   @ApiPropertyOptional({
-    example: false,
+    enum: OrderStatus,
+    example: OrderStatus.IN_PROGRESS,
   })
   @IsOptional()
-  @IsBoolean()
-  delivered?: boolean;
+  @IsEnum(OrderStatus)
+  status?: OrderStatus;
 
   @ApiPropertyOptional({
     example: 'Deliver after lunch',

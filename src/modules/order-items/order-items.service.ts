@@ -9,6 +9,8 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateOrderItemDto } from './dto/create-order-item.dto';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto';
 import { recalculateOrderTotals } from '../orders/helpers/recalculate-order';
+import { getEffectiveProductPrice } from '../orders/helpers/get-effective-product-price';
+import { calculateOrderItemTotal } from '../orders/helpers/calculate-order-item-total';
 
 @Injectable()
 export class OrderItemsService {
@@ -57,7 +59,7 @@ export class OrderItemsService {
 
     async create(createOrderItemDto: CreateOrderItemDto) {
 
-        await ensureOrderEditable(
+        const order = await ensureOrderEditable(
             this.prisma,
             createOrderItemDto.orderId,
         );
@@ -72,10 +74,24 @@ export class OrderItemsService {
             throw new NotFoundException('Product not found.');
         }
 
-        const unitPrice = product.basePrice;
+        const unitPrice =
+            await getEffectiveProductPrice(
+                this.prisma,
+                order.customerId,
+                product.id,
+            );
+
+        if (unitPrice === null) {
+            throw new NotFoundException(
+                'Product not found.',
+            );
+        }
 
         const lineTotal =
-            createOrderItemDto.quantity * unitPrice;
+            calculateOrderItemTotal(
+                createOrderItemDto.quantity,
+                unitPrice,
+            );
 
         const orderItem = await this.prisma.orderItem.create({
             data: {
@@ -117,7 +133,7 @@ export class OrderItemsService {
             );
         }
 
-        await ensureOrderEditable(
+        const order = await ensureOrderEditable(
             this.prisma,
             existingOrderItem.orderId,
         );
@@ -138,10 +154,24 @@ export class OrderItemsService {
             updateOrderItemDto.quantity ??
             existingOrderItem.quantity;
 
-        const unitPrice = product.basePrice;
+        const unitPrice =
+            await getEffectiveProductPrice(
+                this.prisma,
+                order.customerId,
+                product.id,
+            );
+
+        if (unitPrice === null) {
+            throw new NotFoundException(
+                'Product not found.',
+            );
+        }
 
         const lineTotal =
-            quantity * unitPrice;
+            calculateOrderItemTotal(
+                quantity,
+                unitPrice,
+            );
 
         const orderItem =
             await this.prisma.orderItem.update({
