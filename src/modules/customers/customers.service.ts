@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { OrderStatus } from '@prisma/client';
+import { calculateOrderFinancialSummary } from '../orders/helpers/order-financial-summary';
 
 @Injectable()
 export class CustomersService {
@@ -105,15 +106,29 @@ export class CustomersService {
   async getProfile(id: number) {
 
     const [
+
       customer,
+
       totalOrders,
+
       statusCounts,
+
       revenueAggregate,
+
       lastOrder,
+
       lastDelivery,
+
       recentOrders,
+
       outstandingOrders,
+
       paymentHistory,
+
+      favoriteProducts,
+
+      negotiatedPrices,
+
     ] = await Promise.all([
 
       this.prisma.customer.findUnique({
@@ -229,6 +244,45 @@ export class CustomersService {
         },
       }),
 
+
+      this.prisma.orderItem.findMany({
+        where: {
+          order: {
+            customerId: id,
+          },
+        },
+
+        include: {
+          product: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              unit: true,
+            },
+          },
+        },
+      }),
+
+      this.prisma.customerProductPrice.findMany({
+        where: {
+          customerId: id,
+        },
+
+        select: {
+          productId: true,
+          price: true,
+
+          product: {
+            select: {
+              code: true,
+              name: true,
+              basePrice: true,
+              unit: true,
+            },
+          },
+        },
+      }),
     ]);
 
     if (!customer) {
@@ -258,22 +312,126 @@ export class CustomersService {
     const totalSpent =
       revenueAggregate._sum.total ?? 0;
 
-    const outstandingBalance =
-      outstandingOrders.reduce(
-        (sum, order) => {
+    const accountsReceivable =
+      outstandingOrders
+        .map((order) => {
 
-          const paid =
-            order.payments.reduce(
-              (paymentSum, payment) =>
-                paymentSum + payment.amount,
-              0,
+          const financialSummary =
+            calculateOrderFinancialSummary(
+              order.total,
+              order.payments,
             );
 
-          return sum + (order.total - paid);
+          return {
 
-        },
+            orderId: order.id,
+
+            orderDate: order.orderDate,
+
+            deliveryDate: order.deliveryDate,
+
+            status: order.status,
+
+            total: order.total,
+
+            amountPaid:
+              financialSummary.amountPaid,
+
+            remainingBalance:
+              financialSummary.remainingBalance,
+
+            paymentStatus:
+              financialSummary.paymentStatus,
+
+          };
+
+        })
+        .filter(
+          (order) =>
+            order.remainingBalance > 0,
+        );
+
+    const outstandingBalance =
+      accountsReceivable.reduce(
+        (sum, order) =>
+          sum + order.remainingBalance,
         0,
       );
+
+    const favoriteProductsSummary =
+      Object.values(
+
+        favoriteProducts.reduce((acc, item) => {
+
+          const productId = item.product.id;
+
+          if (!acc[productId]) {
+
+            acc[productId] = {
+
+              productId,
+
+              code: item.product.code,
+
+              name: item.product.name,
+
+              unit: item.product.unit,
+
+              timesPurchased: 0,
+
+              totalQuantity: 0,
+
+            };
+
+          }
+
+          acc[productId].timesPurchased += 1;
+
+          acc[productId].totalQuantity += item.quantity;
+
+          return acc;
+
+        }, {} as Record<number, {
+
+          productId: number;
+
+          code: string;
+
+          name: string;
+
+          unit: string;
+
+          timesPurchased: number;
+
+          totalQuantity: number;
+
+        }>),
+      );
+
+    favoriteProductsSummary.sort(
+      (a, b) =>
+        b.totalQuantity - a.totalQuantity,
+    );
+
+    const negotiatedPricesSummary =
+      negotiatedPrices.map((price) => ({
+
+        productId: price.productId,
+
+        code: price.product.code,
+
+        name: price.product.name,
+
+        unit: price.product.unit,
+
+        basePrice: price.product.basePrice,
+
+        customerPrice: price.price,
+
+        discountAmount:
+          price.product.basePrice - price.price,
+
+      }));
 
     return {
 
@@ -305,6 +463,13 @@ export class CustomersService {
 
       paymentHistory,
 
+      accountsReceivable,
+
+      favoriteProducts:
+        favoriteProductsSummary,
+
+      negotiatedPrices:
+        negotiatedPricesSummary,
     };
   }
 }
