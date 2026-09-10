@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
 } from '@nestjs/common';
@@ -13,11 +14,18 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(private readonly customersService: CustomersService) { }
 
   @Get()
   findAll() {
     return this.customersService.findAll();
+  }
+
+  @Get(':id/profile')
+  getProfile(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.customersService.getProfile(id);
   }
 
   @Get(':id')
