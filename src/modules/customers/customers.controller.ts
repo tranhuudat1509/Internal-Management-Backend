@@ -49,4 +49,11 @@ export class CustomersController {
   remove(@Param('id') id: string) {
     return this.customersService.remove(Number(id));
   }
+
+  @Get(':id/ledger')
+  getLedger(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.customersService.getLedger(id);
+  }
 }

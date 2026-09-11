@@ -1,11 +1,11 @@
 import {
-    Body,
     Controller,
-    Delete,
     Get,
-    Param,
-    Patch,
     Post,
+    Body,
+    Patch,
+    Param,
+    Delete,
 } from '@nestjs/common';
 
 import { OrdersService } from './orders.service';
@@ -42,5 +42,14 @@ export class OrdersController {
     @Delete(':id')
     remove(@Param('id') id: string) {
         return this.ordersService.remove(Number(id));
+    }
+
+    @Get(':id/details')
+    getDetails(
+        @Param('id') id: string,
+    ) {
+        return this.ordersService.getDetails(
+            Number(id),
+        );
     }
 }

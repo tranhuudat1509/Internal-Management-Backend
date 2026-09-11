@@ -8,6 +8,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
+import { calculateOrderFinancialSummary } from '../orders/helpers/order-financial-summary';
 
 @Injectable()
 export class PaymentsService {
@@ -72,14 +73,16 @@ export class PaymentsService {
             throw new NotFoundException('Order not found.');
         }
 
-        const amountPaid = order.payments.reduce(
-            (sum, payment) => sum + payment.amount,
-            0,
-        );
+        const financialSummary =
+            calculateOrderFinancialSummary(
+                order.total,
+                order.payments,
+            );
 
-        const remainingBalance = order.total - amountPaid;
-
-        if (createPaymentDto.amount > remainingBalance) {
+        if (
+            createPaymentDto.amount >
+            financialSummary.remainingBalance
+        ) {
             throw new BadRequestException(
                 'Payment exceeds the remaining balance.',
             );
@@ -132,16 +135,25 @@ export class PaymentsService {
             throw new NotFoundException('Order not found.');
         }
 
-        const amountPaidExcludingCurrent = order.payments
-            .filter(payment => payment.id !== id)
-            .reduce((sum, payment) => sum + payment.amount, 0);
+        const paymentsExcludingCurrent =
+            order.payments.filter(
+                payment => payment.id !== id,
+            );
 
-        const newAmount = updatePaymentDto.amount ?? existingPayment.amount;
+        const financialSummary =
+            calculateOrderFinancialSummary(
+                order.total,
+                paymentsExcludingCurrent,
+            );
 
-        const remainingBalance =
-            order.total - amountPaidExcludingCurrent;
+        const newAmount =
+            updatePaymentDto.amount ??
+            existingPayment.amount;
 
-        if (newAmount > remainingBalance) {
+        if (
+            newAmount >
+            financialSummary.remainingBalance
+        ) {
             throw new BadRequestException(
                 'Payment exceeds the remaining balance.',
             );

@@ -10,6 +10,8 @@ import { OrderStatus } from '@prisma/client';
 import { ensureOrderEditable } from './helpers/ensure-order-editable';
 import { getEffectiveProductPrice } from './helpers/get-effective-product-price';
 import { calculateOrderItemTotal } from './helpers/calculate-order-item-total';
+import { getOrderWithDetails }
+  from './helpers/get-order-with-details';
 
 @Injectable()
 export class OrdersService {
@@ -38,27 +40,11 @@ export class OrdersService {
   }
 
   async findOne(id: number) {
-    const order = await this.prisma.order.findUnique({
-      where: {
+    const order =
+      await getOrderWithDetails(
+        this.prisma,
         id,
-      },
-
-      include: {
-        customer: true,
-
-        items: {
-          include: {
-            product: true,
-          },
-        },
-
-        payments: true,
-      },
-    });
-
-    if (!order) {
-      throw new NotFoundException('Order not found.');
-    }
+      );
 
     const financialSummary = calculateOrderFinancialSummary(
       order.total,
@@ -164,6 +150,86 @@ export class OrdersService {
     );
 
     return this.findOne(order.id);
+  }
+
+  async getDetails(id: number) {
+    const order =
+      await getOrderWithDetails(
+        this.prisma,
+        id,
+      );
+
+    const financialSummary =
+      calculateOrderFinancialSummary(
+        order.total,
+        order.payments,
+      );
+
+    const itemsSummary =
+      order.items.map((item) => ({
+
+        productId: item.product.id,
+
+        code: item.product.code,
+
+        name: item.product.name,
+
+        unit: item.product.unit,
+
+        quantity: item.quantity,
+
+        unitPrice: item.unitPrice,
+
+        lineTotal: item.lineTotal,
+
+      }));
+
+    const paymentsSummary =
+      order.payments.map((payment) => ({
+
+        id: payment.id,
+
+        paymentDate: payment.paymentDate,
+
+        amount: payment.amount,
+
+        paymentMethod: payment.paymentMethod,
+
+        notes: payment.notes,
+
+      }));
+
+    return {
+
+      order: {
+
+        id: order.id,
+
+        status: order.status,
+
+        orderDate: order.orderDate,
+
+        deliveryDate: order.deliveryDate,
+
+        subtotal: order.subtotal,
+
+        discount: order.discount,
+
+        total: order.total,
+
+        notes: order.notes,
+
+      },
+
+      customer: order.customer,
+
+      financialSummary,
+
+      items: itemsSummary,
+
+      payments: paymentsSummary,
+
+    };
   }
 
   async update(id: number, updateOrderDto: UpdateOrderDto) {

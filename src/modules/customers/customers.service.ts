@@ -472,4 +472,130 @@ export class CustomersService {
         negotiatedPricesSummary,
     };
   }
+
+  async getLedger(id: number) {
+
+    const [
+
+      customer,
+
+      orders,
+
+      payments,
+
+    ] = await Promise.all([
+
+      this.prisma.customer.findUnique({
+        where: {
+          id,
+        },
+
+        include: {
+          contacts: true,
+        },
+      }),
+
+      this.prisma.order.findMany({
+        where: {
+          customerId: id,
+        },
+
+        orderBy: {
+          orderDate: 'asc',
+        },
+      }),
+
+      this.prisma.payment.findMany({
+        where: {
+          order: {
+            customerId: id,
+          },
+        },
+
+        include: {
+          order: {
+            select: {
+              id: true,
+            },
+          },
+        },
+
+        orderBy: {
+          paymentDate: 'asc',
+        },
+      }),
+
+    ]);
+
+    if (!customer) {
+      throw new NotFoundException(
+        'Customer not found.',
+      );
+    }
+
+    const ledger: {
+      date: Date;
+      type: 'ORDER' | 'PAYMENT';
+      status: OrderStatus | null;
+      orderId: number;
+      description: string;
+      debit: number;
+      credit: number;
+      balance: number;
+    }[] = [];
+    for (const order of orders) {
+
+      ledger.push({
+        date: order.orderDate,
+        type: 'ORDER',
+        status: order.status,
+        orderId: order.id,
+        description: `Đơn hàng #${order.id}`,
+        debit: order.total,
+        credit: 0,
+        balance: 0,
+      });
+    }
+
+    for (const payment of payments) {
+
+      ledger.push({
+        date: payment.paymentDate,
+        type: 'PAYMENT',
+        status: null,
+        orderId: payment.order.id,
+        description: `Thanh toán HĐ #${payment.order.id}`,
+        debit: 0,
+        credit: payment.amount,
+        balance: 0,
+      });
+    }
+
+    ledger.sort(
+      (a, b) =>
+        new Date(a.date).getTime() -
+        new Date(b.date).getTime(),
+    );
+
+    let runningBalance = 0;
+
+    for (const entry of ledger) {
+      runningBalance += entry.debit;
+      runningBalance -= entry.credit;
+
+      entry.balance = runningBalance;
+    }
+
+    return {
+      customer,
+
+      summary: {
+        currentBalance: runningBalance,
+        totalTransactions: ledger.length,
+      },
+
+      ledger,
+    };
+
+  }
 }
