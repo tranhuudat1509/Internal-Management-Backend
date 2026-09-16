@@ -10,6 +10,7 @@ async function bootstrap() {
     .setTitle('Dai Truong Thanh API')
     .setDescription('Furniture Management System')
     .setVersion('1.0')
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

@@ -2,10 +2,14 @@ import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/commo
 import { CustomerProductPricesService } from './customer-product-prices.service';
 import { CreateCustomerProductPriceDto } from './dto/create-customer-product-price.dto';
 import { UpdateCustomerProductPriceDto } from './dto/update-customer-product-price.dto';
+import { UseGuards } from '@nestjs/common';
 
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+@UseGuards(JwtAuthGuard)
 @Controller('customer-product-prices')
 export class CustomerProductPricesController {
-  constructor(private readonly customerProductPricesService: CustomerProductPricesService) {}
+  constructor(private readonly customerProductPricesService: CustomerProductPricesService) { }
 
   @Post()
   create(@Body() createCustomerProductPriceDto: CreateCustomerProductPriceDto) {

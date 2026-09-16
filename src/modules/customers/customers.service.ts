@@ -35,34 +35,62 @@ export class CustomersService {
     return customer;
   }
 
-  async update(id: number, updateCustomerDto: UpdateCustomerDto) {
-    const customer = await this.prisma.customer.findUnique({
-      where: {
-        id,
-      },
-    });
+  async update(
+    id: number,
+    updateCustomerDto: UpdateCustomerDto,
+  ) {
+
+    const customer =
+      await this.prisma.customer.findUnique({
+        where: { id },
+      });
 
     if (!customer) {
-      throw new NotFoundException('Customer not found.');
+      throw new NotFoundException(
+        'Customer not found.',
+      );
     }
 
+    console.log(updateCustomerDto);
+    console.log(updateCustomerDto.contacts);
+
     return this.prisma.customer.update({
+
       where: {
         id,
       },
 
       data: {
+
         companyName: updateCustomerDto.companyName,
+
         city: updateCustomerDto.city,
+
         address: updateCustomerDto.address,
+
         notes: updateCustomerDto.notes,
+
         isActive: updateCustomerDto.isActive,
+
+        contacts: {
+
+          deleteMany: {},
+
+          create:
+            updateCustomerDto.contacts ?? [],
+
+        },
+
       },
 
       include: {
+
         contacts: true,
+
       },
+
     });
+
   }
 
   async remove(id: number) {
