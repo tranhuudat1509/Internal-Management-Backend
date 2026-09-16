@@ -8,6 +8,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -68,12 +69,14 @@ export class UsersService {
 
         }
 
+        const passwordHash = await bcrypt.hash(dto.password, 10);
+
         return this.prisma.user.create({
 
             data: {
                 name: dto.name,
                 username: dto.username,
-                passwordHash: dto.password,
+                passwordHash,
                 isActive: dto.isActive,
             },
 
@@ -116,8 +119,9 @@ export class UsersService {
         if (dto.username !== undefined)
             data.username = dto.username;
 
-        if (dto.password !== undefined)
-            data.passwordHash = dto.password;
+        if (dto.password !== undefined) {
+            data.passwordHash = await bcrypt.hash(dto.password, 10);
+        }
 
         if (dto.isActive !== undefined)
             data.isActive = dto.isActive;
