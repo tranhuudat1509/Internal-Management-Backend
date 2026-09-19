@@ -1,16 +1,16 @@
 import {
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsEnum,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
-  IsString,
-  IsNotEmpty,
   IsPositive,
+  IsString,
   Min,
 } from 'class-validator';
-
 import { DimensionUnit } from '@prisma/client';
-
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProductDto {
@@ -43,11 +43,15 @@ export class CreateProductDto {
   material?: string;
 
   @ApiPropertyOptional({
-    example: 'Silver',
+    type: [String],
+    example: ['Silver', 'Black'],
   })
   @IsOptional()
-  @IsString()
-  color?: string;
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  colors?: string[];
 
   @ApiPropertyOptional({
     example: 120,

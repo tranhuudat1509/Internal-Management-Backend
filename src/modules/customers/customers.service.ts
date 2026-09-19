@@ -566,18 +566,19 @@ export class CustomersService {
       type: 'ORDER' | 'PAYMENT';
       status: OrderStatus | null;
       orderId: number;
+      paymentId: number | null;
       description: string;
       debit: number;
       credit: number;
       balance: number;
     }[] = [];
     for (const order of orders) {
-
       ledger.push({
         date: order.orderDate,
         type: 'ORDER',
         status: order.status,
         orderId: order.id,
+        paymentId: null,
         description: `Đơn hàng #${order.id}`,
         debit: order.total,
         credit: 0,
@@ -586,12 +587,12 @@ export class CustomersService {
     }
 
     for (const payment of payments) {
-
       ledger.push({
         date: payment.paymentDate,
         type: 'PAYMENT',
         status: null,
         orderId: payment.order.id,
+        paymentId: payment.id,
         description: `Thanh toán HĐ #${payment.order.id}`,
         debit: 0,
         credit: payment.amount,

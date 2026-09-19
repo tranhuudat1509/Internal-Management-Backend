@@ -66,7 +66,6 @@ model Product {
 
   category String
   material String?
-  color    String?
 
   length Int?
   width  Int?
@@ -90,6 +89,53 @@ model Product {
   orderItems OrderItem[]
 
   specialPrices CustomerProductPrice[]
+
+  colors ProductColor[]
+
+  images ProductImage[]
+}
+
+model ProductColor {
+  id Int @id @default(autoincrement())
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name String
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  images ProductImage[]
+
+  @@unique([productId, name])
+  @@index([productId])
+}
+
+model ProductImage {
+  id Int @id @default(autoincrement())
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  colorId Int?
+  color   ProductColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
+
+  fileName String @unique
+
+  originalName String?
+
+  sortOrder Int @default(0)
+
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([colorId])
 }
 
 model Order {
@@ -178,16 +224,16 @@ model CustomerProductPrice {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  name         String
+  name String
 
-  username     String   @unique
+  username String @unique
 
   passwordHash String
 
-  isActive     Boolean  @default(true)
+  isActive Boolean @default(true)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

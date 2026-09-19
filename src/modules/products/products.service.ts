@@ -9,13 +9,38 @@ export class ProductsService {
   constructor(private prisma: PrismaService) { }
 
   async findAll() {
-    return this.prisma.product.findMany();
+    return this.prisma.product.findMany({
+      include: {
+        colors: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        images: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+      },
+    });
   }
 
   async findOne(id: number) {
     const product = await this.prisma.product.findUnique({
       where: {
         id,
+      },
+      include: {
+        colors: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        images: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
       },
     });
 
@@ -27,23 +52,38 @@ export class ProductsService {
   }
 
   async create(createProductDto: CreateProductDto) {
+    const { colors, ...productData } = createProductDto;
+
     return this.prisma.product.create({
       data: {
-        code: createProductDto.code,
-        name: createProductDto.name,
-        category: createProductDto.category,
-        material: createProductDto.material,
-        color: createProductDto.color,
-        length: createProductDto.length,
-        width: createProductDto.width,
-        height: createProductDto.height,
+        ...productData,
+
         dimensionUnit:
           createProductDto.dimensionUnit ?? DimensionUnit.CM,
-        weight: createProductDto.weight,
-        basePrice: createProductDto.basePrice,
-        unit: createProductDto.unit,
-        description: createProductDto.description,
+
         isActive: createProductDto.isActive ?? true,
+
+        colors: colors?.length
+          ? {
+            create: colors.map((name, index) => ({
+              name: name.trim(),
+              sortOrder: index,
+            })),
+          }
+          : undefined,
+      },
+
+      include: {
+        colors: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        images: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
       },
     });
   }
@@ -53,10 +93,68 @@ export class ProductsService {
       where: {
         id,
       },
+      include: {
+        colors: true,
+      },
     });
 
     if (!product) {
       throw new NotFoundException('Product not found.');
+    }
+
+    const { colors, ...productData } = updateProductDto;
+
+    if (colors !== undefined) {
+      const normalizedColors = colors.map((name) => name.trim());
+
+      const existingNames = product.colors.map(
+        (color) => color.name,
+      );
+
+      const colorsToAdd = normalizedColors.filter(
+        (name) => !existingNames.includes(name),
+      );
+
+      const colorsToRemove = product.colors.filter(
+        (color) => !normalizedColors.includes(color.name),
+      );
+
+      if (colorsToRemove.length > 0) {
+        await this.prisma.productColor.deleteMany({
+          where: {
+            id: {
+              in: colorsToRemove.map((color) => color.id),
+            },
+          },
+        });
+      }
+
+      for (let index = 0; index < normalizedColors.length; index++) {
+        const name = normalizedColors[index];
+
+        const existingColor = product.colors.find(
+          (color) => color.name === name,
+        );
+
+        if (existingColor) {
+          await this.prisma.productColor.update({
+            where: {
+              id: existingColor.id,
+            },
+            data: {
+              sortOrder: index,
+            },
+          });
+        } else if (colorsToAdd.includes(name)) {
+          await this.prisma.productColor.create({
+            data: {
+              productId: id,
+              name,
+              sortOrder: index,
+            },
+          });
+        }
+      }
     }
 
     return this.prisma.product.update({
@@ -64,21 +162,19 @@ export class ProductsService {
         id,
       },
 
-      data: {
-        code: updateProductDto.code,
-        name: updateProductDto.name,
-        category: updateProductDto.category,
-        material: updateProductDto.material,
-        color: updateProductDto.color,
-        length: updateProductDto.length,
-        width: updateProductDto.width,
-        height: updateProductDto.height,
-        dimensionUnit: updateProductDto.dimensionUnit,
-        weight: updateProductDto.weight,
-        basePrice: updateProductDto.basePrice,
-        unit: updateProductDto.unit,
-        description: updateProductDto.description,
-        isActive: updateProductDto.isActive,
+      data: productData,
+
+      include: {
+        colors: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        images: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
       },
     });
   }
