@@ -6,6 +6,7 @@ import {
     Min,
     IsPositive,
     IsEnum,
+    IsDateString,
 } from 'class-validator';
 
 import {
@@ -39,6 +40,14 @@ export class CreatePaymentDto {
     })
     @IsEnum(PaymentMethod)
     paymentMethod!: PaymentMethod;
+
+    @ApiPropertyOptional({
+        example: '2026-09-19T00:00:00.000Z',
+        description: 'Date when the payment was received.',
+    })
+    @IsOptional()
+    @IsDateString()
+    paymentDate?: string;
 
     @ApiPropertyOptional({
         example: 'First payment',

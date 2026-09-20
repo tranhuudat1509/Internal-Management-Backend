@@ -96,6 +96,10 @@ export class PaymentsService {
 
                 paymentMethod: createPaymentDto.paymentMethod,
 
+                paymentDate: createPaymentDto.paymentDate
+                    ? new Date(createPaymentDto.paymentDate)
+                    : undefined,
+
                 notes: createPaymentDto.notes,
             },
 
@@ -166,7 +170,13 @@ export class PaymentsService {
 
             data: {
                 amount: updatePaymentDto.amount,
+
                 paymentMethod: updatePaymentDto.paymentMethod,
+
+                paymentDate: updatePaymentDto.paymentDate
+                    ? new Date(updatePaymentDto.paymentDate)
+                    : undefined,
+
                 notes: updatePaymentDto.notes,
             },
 
