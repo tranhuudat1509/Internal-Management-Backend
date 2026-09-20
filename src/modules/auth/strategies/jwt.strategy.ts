@@ -16,7 +16,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             ignoreExpiration: false,
 
             // MUST MATCH the secret in AuthModule
-            secretOrKey: 'super-secret-key',
+            secretOrKey:
+                process.env.JWT_SECRET ?? 'development-only-secret',
 
         });
 
