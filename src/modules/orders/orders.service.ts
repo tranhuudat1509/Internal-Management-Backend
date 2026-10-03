@@ -138,6 +138,8 @@ export class OrdersService {
 
         discount: createOrderDto.discount ?? 0,
 
+        taxRate: createOrderDto.taxRate ?? 0,
+
         items: {
           create: orderItems,
         },
@@ -215,6 +217,10 @@ export class OrdersService {
 
         discount: order.discount,
 
+        taxRate: order.taxRate,
+
+        taxAmount: order.taxAmount,
+
         total: order.total,
 
         notes: order.notes,
@@ -273,6 +279,7 @@ export class OrdersService {
 
         notes: updateOrderDto.notes,
         discount: updateOrderDto.discount,
+        taxRate: updateOrderDto.taxRate,
       },
     });
 

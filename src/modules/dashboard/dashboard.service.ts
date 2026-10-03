@@ -1,38 +1,23 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../database/prisma.service';
-import { calculateOrderFinancialSummary }
-    from '../orders/helpers/order-financial-summary';
 
 @Injectable()
 export class DashboardService {
-
     constructor(
         private prisma: PrismaService,
     ) { }
 
     async getDashboard() {
-
         const [
-
             totalCustomers,
-
             totalProducts,
-
             totalOrders,
-
             activeOrders,
-
-            orders,
-
             recentOrders,
-
             recentPayments,
-
             customers,
-
         ] = await Promise.all([
-
             this.prisma.customer.count(),
 
             this.prisma.product.count(),
@@ -46,24 +31,12 @@ export class DashboardService {
             }),
 
             this.prisma.order.findMany({
-
-                where: {
-                    status: {
-                        not: 'CANCELLED',
-                    },
-                },
-
-                include: {
-                    payments: true,
-                },
-
-            }),
-
-            this.prisma.order.findMany({
                 take: 5,
+
                 orderBy: {
                     orderDate: 'desc',
                 },
+
                 include: {
                     customer: true,
                 },
@@ -71,116 +44,103 @@ export class DashboardService {
 
             this.prisma.payment.findMany({
                 take: 5,
+
                 orderBy: {
                     paymentDate: 'desc',
                 },
+
                 include: {
-                    order: {
-                        include: {
-                            customer: true,
-                        },
-                    },
+                    customer: true,
                 },
             }),
 
             this.prisma.customer.findMany({
-
                 include: {
-
                     orders: {
-
                         where: {
                             status: {
                                 not: 'CANCELLED',
                             },
                         },
-
-                        include: {
-                            payments: true,
-                        },
-
                     },
 
+                    payments: true,
                 },
-
             }),
-
         ]);
 
-        let outstandingBalance = 0;
+        const customerBalances =
+            customers.map((customer) => {
+                const totalOrders =
+                    customer.orders.reduce(
+                        (sum, order) =>
+                            sum + order.total,
+                        0,
+                    );
 
-        for (const order of orders) {
+                const totalPayments =
+                    customer.payments.reduce(
+                        (sum, payment) =>
+                            sum + payment.amount,
+                        0,
+                    );
 
-            const financialSummary =
-                calculateOrderFinancialSummary(
-                    order.total,
-                    order.payments,
-                );
+                const outstandingBalance =
+                    Math.max(
+                        0,
+                        totalOrders - totalPayments,
+                    );
 
-            outstandingBalance +=
-                financialSummary.remainingBalance;
+                return {
+                    customerId: customer.id,
+                    companyName: customer.companyName,
+                    totalOrders,
+                    totalPayments,
+                    outstandingBalance,
+                };
+            });
 
-        }
+        const outstandingBalance =
+            customerBalances.reduce(
+                (sum, customer) =>
+                    sum +
+                    customer.outstandingBalance,
+                0,
+            );
 
         const recentOrdersSummary =
             recentOrders.map((order) => ({
-
                 id: order.id,
 
-                customer: order.customer.companyName,
+                customer:
+                    order.customer.companyName,
 
                 status: order.status,
 
                 orderDate: order.orderDate,
 
                 total: order.total,
-
             }));
 
         const recentPaymentsSummary =
             recentPayments.map((payment) => ({
-
                 id: payment.id,
 
-                customer: payment.order.customer.companyName,
+                customer:
+                    payment.customer.companyName,
 
-                paymentDate: payment.paymentDate,
+                paymentDate:
+                    payment.paymentDate,
 
-                amount: payment.amount,
+                amount:
+                    payment.amount,
 
-                paymentMethod: payment.paymentMethod,
-
+                paymentMethod:
+                    payment.paymentMethod,
             }));
 
         const topDebtors =
-            customers
-                .map((customer) => {
-
-                    let outstandingBalance = 0;
-
-                    for (const order of customer.orders) {
-
-                        const financialSummary =
-                            calculateOrderFinancialSummary(
-                                order.total,
-                                order.payments,
-                            );
-
-                        outstandingBalance +=
-                            financialSummary.remainingBalance;
-                    }
-
-                    return {
-
-                        customerId: customer.id,
-
-                        companyName: customer.companyName,
-
-                        outstandingBalance,
-
-                    };
-
-                })
+            customerBalances
                 .filter(
                     (customer) =>
                         customer.outstandingBalance > 0,
@@ -193,9 +153,7 @@ export class DashboardService {
                 .slice(0, 5);
 
         return {
-
             summary: {
-
                 totalCustomers,
 
                 totalProducts,
@@ -205,16 +163,15 @@ export class DashboardService {
                 activeOrders,
 
                 outstandingBalance,
-
             },
 
-            recentOrders: recentOrdersSummary,
+            recentOrders:
+                recentOrdersSummary,
 
-            recentPayments: recentPaymentsSummary,
+            recentPayments:
+                recentPaymentsSummary,
 
             topDebtors,
         };
-
     }
-
 }

@@ -7,6 +7,7 @@ import {
   IsString,
   ValidateNested,
   Min,
+  Max,
   ArrayMinSize,
   IsBoolean,
   IsEnum,
@@ -71,6 +72,16 @@ export class CreateOrderDto {
   @IsNumber()
   @Min(0)
   discount?: number;
+
+  @ApiPropertyOptional({
+    example: 8,
+    description: 'VAT/tax percentage applied to the order.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  taxRate?: number;
 
   @ApiProperty({
     example: [

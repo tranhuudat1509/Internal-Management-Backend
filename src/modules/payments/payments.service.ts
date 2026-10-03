@@ -4,162 +4,235 @@ import {
     BadRequestException,
 } from '@nestjs/common';
 
+import {
+    OrderStatus,
+} from '@prisma/client';
+
 import { PrismaService } from '../../database/prisma.service';
 
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
-import { calculateOrderFinancialSummary } from '../orders/helpers/order-financial-summary';
 
 @Injectable()
 export class PaymentsService {
-
     constructor(private prisma: PrismaService) { }
+
+    private async getCustomerFinancialSummary(
+        customerId: number,
+        excludePaymentId?: number,
+    ) {
+        const customer = await this.prisma.customer.findUnique({
+            where: {
+                id: customerId,
+            },
+        });
+
+        if (!customer) {
+            throw new NotFoundException('Customer not found.');
+        }
+
+        const [ordersResult, paymentsResult] = await Promise.all([
+            this.prisma.order.aggregate({
+                where: {
+                    customerId,
+
+                    status: {
+                        not: OrderStatus.CANCELLED,
+                    },
+                },
+
+                _sum: {
+                    total: true,
+                },
+            }),
+
+            this.prisma.payment.aggregate({
+                where: {
+                    customerId,
+
+                    ...(excludePaymentId !== undefined
+                        ? {
+                            id: {
+                                not: excludePaymentId,
+                            },
+                        }
+                        : {}),
+                },
+
+                _sum: {
+                    amount: true,
+                },
+            }),
+        ]);
+
+        const totalOrders =
+            ordersResult._sum.total ?? 0;
+
+        const totalPayments =
+            paymentsResult._sum.amount ?? 0;
+
+        const outstandingBalance =
+            Math.max(
+                0,
+                totalOrders - totalPayments,
+            );
+
+        return {
+            totalOrders,
+            totalPayments,
+            outstandingBalance,
+        };
+    }
 
     async findAll() {
         return this.prisma.payment.findMany({
             include: {
+                customer: true,
+
+                // Legacy v1.0 relationship only.
                 order: {
                     include: {
                         customer: true,
                     },
                 },
-            }
-        })
+            },
+
+            orderBy: {
+                paymentDate: 'desc',
+            },
+        });
     }
 
     async findOne(id: number) {
-        const payment = await this.prisma.payment.findUnique({
-            where: {
-                id,
-            },
+        const payment =
+            await this.prisma.payment.findUnique({
+                where: {
+                    id,
+                },
 
-            include: {
-                order: {
-                    include: {
-                        customer: true,
+                include: {
+                    customer: true,
 
-                        items: {
-                            include: {
-                                product: true,
+                    // May exist for old v1.0 payments.
+                    order: {
+                        include: {
+                            customer: true,
+
+                            items: {
+                                include: {
+                                    product: true,
+                                },
                             },
                         },
-
-                        payments: true,
                     },
                 },
-            },
-        });
+            });
 
         if (!payment) {
-            throw new NotFoundException('Payment not found.');
-        }
-
-        return payment;
-    }
-
-    async create(createPaymentDto: CreatePaymentDto) {
-
-        const order = await this.prisma.order.findUnique({
-            where: {
-                id: createPaymentDto.orderId,
-            },
-
-            include: {
-                payments: true,
-            },
-        });
-
-        if (!order) {
-            throw new NotFoundException('Order not found.');
+            throw new NotFoundException(
+                'Payment not found.',
+            );
         }
 
         const financialSummary =
-            calculateOrderFinancialSummary(
-                order.total,
-                order.payments,
+            await this.getCustomerFinancialSummary(
+                payment.customerId,
+            );
+
+        return {
+            ...payment,
+            customerFinancialSummary:
+                financialSummary,
+        };
+    }
+
+    async create(
+        createPaymentDto: CreatePaymentDto,
+    ) {
+        const financialSummary =
+            await this.getCustomerFinancialSummary(
+                createPaymentDto.customerId,
             );
 
         if (
             createPaymentDto.amount >
-            financialSummary.remainingBalance
+            financialSummary.outstandingBalance
         ) {
             throw new BadRequestException(
-                'Payment exceeds the remaining balance.',
+                'Payment exceeds the customer outstanding balance.',
             );
         }
 
         return this.prisma.payment.create({
             data: {
-                orderId: createPaymentDto.orderId,
+                customerId:
+                    createPaymentDto.customerId,
 
-                amount: createPaymentDto.amount,
+                // New v1.2 payments are not allocated
+                // to individual orders.
+                orderId: null,
 
-                paymentMethod: createPaymentDto.paymentMethod,
+                amount:
+                    createPaymentDto.amount,
 
-                paymentDate: createPaymentDto.paymentDate
-                    ? new Date(createPaymentDto.paymentDate)
-                    : undefined,
+                paymentMethod:
+                    createPaymentDto.paymentMethod,
 
-                notes: createPaymentDto.notes,
+                paymentDate:
+                    createPaymentDto.paymentDate
+                        ? new Date(
+                            createPaymentDto.paymentDate,
+                        )
+                        : undefined,
+
+                notes:
+                    createPaymentDto.notes,
             },
 
             include: {
-                order: {
-                    include: {
-                        customer: true,
-                    },
-                },
-            }
+                customer: true,
+                order: true,
+            },
         });
     }
 
-    async update(id: number, updatePaymentDto: UpdatePaymentDto) {
-
-        const existingPayment = await this.prisma.payment.findUnique({
-            where: {
-                id,
-            },
-        });
+    async update(
+        id: number,
+        updatePaymentDto: UpdatePaymentDto,
+    ) {
+        const existingPayment =
+            await this.prisma.payment.findUnique({
+                where: {
+                    id,
+                },
+            });
 
         if (!existingPayment) {
-            throw new NotFoundException('Payment not found.');
+            throw new NotFoundException(
+                'Payment not found.',
+            );
         }
 
-        const order = await this.prisma.order.findUnique({
-            where: {
-                id: existingPayment.orderId,
-            },
-
-            include: {
-                payments: true,
-            },
-        });
-
-        if (!order) {
-            throw new NotFoundException('Order not found.');
-        }
-
-        const paymentsExcludingCurrent =
-            order.payments.filter(
-                payment => payment.id !== id,
-            );
-
-        const financialSummary =
-            calculateOrderFinancialSummary(
-                order.total,
-                paymentsExcludingCurrent,
-            );
+        const customerId =
+            updatePaymentDto.customerId ??
+            existingPayment.customerId;
 
         const newAmount =
             updatePaymentDto.amount ??
             existingPayment.amount;
 
+        const financialSummary =
+            await this.getCustomerFinancialSummary(
+                customerId,
+                id,
+            );
+
         if (
             newAmount >
-            financialSummary.remainingBalance
+            financialSummary.outstandingBalance
         ) {
             throw new BadRequestException(
-                'Payment exceeds the remaining balance.',
+                'Payment exceeds the customer outstanding balance.',
             );
         }
 
@@ -169,36 +242,45 @@ export class PaymentsService {
             },
 
             data: {
-                amount: updatePaymentDto.amount,
+                customerId:
+                    updatePaymentDto.customerId,
 
-                paymentMethod: updatePaymentDto.paymentMethod,
+                amount:
+                    updatePaymentDto.amount,
 
-                paymentDate: updatePaymentDto.paymentDate
-                    ? new Date(updatePaymentDto.paymentDate)
-                    : undefined,
+                paymentMethod:
+                    updatePaymentDto.paymentMethod,
 
-                notes: updatePaymentDto.notes,
+                paymentDate:
+                    updatePaymentDto.paymentDate
+                        ? new Date(
+                            updatePaymentDto.paymentDate,
+                        )
+                        : undefined,
+
+                notes:
+                    updatePaymentDto.notes,
             },
 
             include: {
-                order: {
-                    include: {
-                        customer: true,
-                    },
-                },
+                customer: true,
+                order: true,
             },
         });
     }
 
     async remove(id: number) {
-        const payment = await this.prisma.payment.findUnique({
-            where: {
-                id,
-            },
-        });
+        const payment =
+            await this.prisma.payment.findUnique({
+                where: {
+                    id,
+                },
+            });
 
         if (!payment) {
-            throw new NotFoundException('Payment not found.');
+            throw new NotFoundException(
+                'Payment not found.',
+            );
         }
 
         return this.prisma.payment.delete({

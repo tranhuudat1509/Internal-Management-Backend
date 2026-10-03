@@ -23,7 +23,20 @@ export async function recalculateOrderTotals(
         0,
     );
 
-    const total = subtotal - (order.discount ?? 0);
+    const discount = order.discount ?? 0;
+    const taxRate = order.taxRate ?? 0;
+
+    const amountBeforeTax = Math.max(
+        subtotal - discount,
+        0,
+    );
+
+    const taxAmount = Math.round(
+        amountBeforeTax * (taxRate / 100),
+    );
+
+    const total =
+        amountBeforeTax + taxAmount;
 
     await prisma.order.update({
         where: {
@@ -32,6 +45,7 @@ export async function recalculateOrderTotals(
 
         data: {
             subtotal,
+            taxAmount,
             total,
         },
     });

@@ -19,11 +19,11 @@ import { PaymentMethod } from '@prisma/client';
 export class CreatePaymentDto {
     @ApiProperty({
         example: 1,
-        description: 'ID of the order receiving this payment.',
+        description: 'ID of the customer making this payment.',
     })
     @IsInt()
     @Min(1)
-    orderId!: number;
+    customerId!: number;
 
     @ApiProperty({
         example: 1500000,
@@ -35,14 +35,14 @@ export class CreatePaymentDto {
 
     @ApiProperty({
         enum: PaymentMethod,
-        example: PaymentMethod.CASH,
+        example: PaymentMethod.BANK_TRANSFER,
         description: 'Payment method used.',
     })
     @IsEnum(PaymentMethod)
     paymentMethod!: PaymentMethod;
 
     @ApiPropertyOptional({
-        example: '2026-09-19T00:00:00.000Z',
+        example: '2026-09-27T00:00:00.000Z',
         description: 'Date when the payment was received.',
     })
     @IsOptional()
@@ -50,7 +50,7 @@ export class CreatePaymentDto {
     paymentDate?: string;
 
     @ApiPropertyOptional({
-        example: 'First payment',
+        example: 'Thanh toán công nợ tháng 9',
         description: 'Optional notes about this payment.',
     })
     @IsOptional()

@@ -3,7 +3,6 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { OrderStatus } from '@prisma/client';
-import { calculateOrderFinancialSummary } from '../orders/helpers/order-financial-summary';
 
 @Injectable()
 export class CustomersService {
@@ -153,6 +152,8 @@ export class CustomersService {
 
       paymentHistory,
 
+      paymentAggregate,
+
       favoriteProducts,
 
       negotiatedPrices,
@@ -247,9 +248,7 @@ export class CustomersService {
 
       this.prisma.payment.findMany({
         where: {
-          order: {
-            customerId: id,
-          },
+          customerId: id,
         },
 
         orderBy: {
@@ -263,12 +262,17 @@ export class CustomersService {
           amount: true,
           paymentDate: true,
           paymentMethod: true,
+          orderId: true,
+        },
+      }),
 
-          order: {
-            select: {
-              id: true,
-            },
-          },
+      this.prisma.payment.aggregate({
+        where: {
+          customerId: id,
+        },
+
+        _sum: {
+          amount: true,
         },
       }),
 
@@ -340,51 +344,26 @@ export class CustomersService {
     const totalSpent =
       revenueAggregate._sum.total ?? 0;
 
-    const accountsReceivable =
-      outstandingOrders
-        .map((order) => {
-
-          const financialSummary =
-            calculateOrderFinancialSummary(
-              order.total,
-              order.payments,
-            );
-
-          return {
-
-            orderId: order.id,
-
-            orderDate: order.orderDate,
-
-            deliveryDate: order.deliveryDate,
-
-            status: order.status,
-
-            total: order.total,
-
-            amountPaid:
-              financialSummary.amountPaid,
-
-            remainingBalance:
-              financialSummary.remainingBalance,
-
-            paymentStatus:
-              financialSummary.paymentStatus,
-
-          };
-
-        })
-        .filter(
-          (order) =>
-            order.remainingBalance > 0,
-        );
-
-    const outstandingBalance =
-      accountsReceivable.reduce(
-        (sum, order) =>
-          sum + order.remainingBalance,
+    const totalOrderAmount =
+      outstandingOrders.reduce(
+        (sum, order) => sum + order.total,
         0,
       );
+
+    const totalPaid =
+      paymentAggregate._sum.amount ?? 0;
+
+    const outstandingBalance =
+      Math.max(
+        0,
+        totalOrderAmount - totalPaid,
+      );
+
+    const accountsReceivable = {
+      totalOrderAmount,
+      totalPaid,
+      outstandingBalance,
+    };
 
     const favoriteProductsSummary =
       Object.values(
@@ -502,17 +481,11 @@ export class CustomersService {
   }
 
   async getLedger(id: number) {
-
     const [
-
       customer,
-
       orders,
-
       payments,
-
     ] = await Promise.all([
-
       this.prisma.customer.findUnique({
         where: {
           id,
@@ -526,6 +499,10 @@ export class CustomersService {
       this.prisma.order.findMany({
         where: {
           customerId: id,
+
+          status: {
+            not: OrderStatus.CANCELLED,
+          },
         },
 
         orderBy: {
@@ -535,24 +512,20 @@ export class CustomersService {
 
       this.prisma.payment.findMany({
         where: {
-          order: {
-            customerId: id,
-          },
-        },
-
-        include: {
-          order: {
-            select: {
-              id: true,
-            },
-          },
+          customerId: id,
         },
 
         orderBy: {
           paymentDate: 'asc',
         },
-      }),
 
+        select: {
+          id: true,
+          orderId: true,
+          amount: true,
+          paymentDate: true,
+        },
+      }),
     ]);
 
     if (!customer) {
@@ -565,13 +538,14 @@ export class CustomersService {
       date: Date;
       type: 'ORDER' | 'PAYMENT';
       status: OrderStatus | null;
-      orderId: number;
+      orderId: number | null;
       paymentId: number | null;
       description: string;
       debit: number;
       credit: number;
       balance: number;
     }[] = [];
+
     for (const order of orders) {
       ledger.push({
         date: order.orderDate,
@@ -591,9 +565,15 @@ export class CustomersService {
         date: payment.paymentDate,
         type: 'PAYMENT',
         status: null,
-        orderId: payment.order.id,
+
+        orderId: payment.orderId,
+
         paymentId: payment.id,
-        description: `Thanh toán HĐ #${payment.order.id}`,
+
+        description: payment.orderId
+          ? `Thanh toán công nợ (HĐ cũ #${payment.orderId})`
+          : 'Thanh toán công nợ',
+
         debit: 0,
         credit: payment.amount,
         balance: 0,
@@ -625,6 +605,5 @@ export class CustomersService {
 
       ledger,
     };
-
   }
 }
