@@ -1,13 +1,15 @@
 import {
+    BadRequestException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { ensureOrderEditable } from '../orders/helpers/ensure-order-editable';
 
 import { PrismaService } from '../../database/prisma.service';
 
 import { CreateOrderItemDto } from './dto/create-order-item.dto';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto';
+
+import { ensureOrderEditable } from '../orders/helpers/ensure-order-editable';
 import { recalculateOrderTotals } from '../orders/helpers/recalculate-order';
 import { getEffectiveProductPrice } from '../orders/helpers/get-effective-product-price';
 import { calculateOrderItemTotal } from '../orders/helpers/calculate-order-item-total';
@@ -27,6 +29,7 @@ export class OrderItemsService {
                 },
 
                 product: true,
+                color: true,
             },
         });
     }
@@ -45,6 +48,7 @@ export class OrderItemsService {
                 },
 
                 product: true,
+                color: true,
             },
         });
 
@@ -68,10 +72,55 @@ export class OrderItemsService {
             where: {
                 id: createOrderItemDto.productId,
             },
+
+            include: {
+                colors: {
+                    where: {
+                        isActive: true,
+                    },
+
+                    orderBy: {
+                        sortOrder: 'asc',
+                    },
+                },
+            },
         });
 
         if (!product) {
-            throw new NotFoundException('Product not found.');
+            throw new NotFoundException(
+                'Product not found.',
+            );
+        }
+
+        let selectedColor:
+            | (typeof product.colors)[number]
+            | null = null;
+
+        if (product.colors.length > 0) {
+
+            if (createOrderItemDto.colorId === undefined) {
+                throw new BadRequestException(
+                    'A color must be selected for this product.',
+                );
+            }
+
+            selectedColor =
+                product.colors.find(
+                    (color) =>
+                        color.id === createOrderItemDto.colorId,
+                ) ?? null;
+
+            if (!selectedColor) {
+                throw new BadRequestException(
+                    'Selected color is not active or does not belong to this product.',
+                );
+            }
+
+        } else if (createOrderItemDto.colorId !== undefined) {
+
+            throw new BadRequestException(
+                'This product does not have an active color selection.',
+            );
         }
 
         const unitPrice =
@@ -93,20 +142,32 @@ export class OrderItemsService {
                 unitPrice,
             );
 
-        const orderItem = await this.prisma.orderItem.create({
-            data: {
-                orderId: createOrderItemDto.orderId,
-                productId: createOrderItemDto.productId,
-                quantity: createOrderItemDto.quantity,
-                unitPrice,
-                lineTotal,
-            },
+        const orderItem =
+            await this.prisma.orderItem.create({
+                data: {
+                    orderId: createOrderItemDto.orderId,
 
-            include: {
-                order: true,
-                product: true,
-            },
-        });
+                    productId: createOrderItemDto.productId,
+
+                    colorId:
+                        selectedColor?.id ?? null,
+
+                    colorNameSnapshot:
+                        selectedColor?.name ?? null,
+
+                    quantity: createOrderItemDto.quantity,
+
+                    unitPrice,
+
+                    lineTotal,
+                },
+
+                include: {
+                    order: true,
+                    product: true,
+                    color: true,
+                },
+            });
 
         await recalculateOrderTotals(
             this.prisma,
@@ -120,6 +181,7 @@ export class OrderItemsService {
         id: number,
         updateOrderItemDto: UpdateOrderItemDto,
     ) {
+
         const existingOrderItem =
             await this.prisma.orderItem.findUnique({
                 where: {
@@ -138,33 +200,136 @@ export class OrderItemsService {
             existingOrderItem.orderId,
         );
 
-        const product = await this.prisma.product.findUnique({
-            where: {
-                id:
-                    updateOrderItemDto.productId ??
-                    existingOrderItem.productId,
-            },
-        });
+        const targetProductId =
+            updateOrderItemDto.productId ??
+            existingOrderItem.productId;
+
+        const productChanged =
+            targetProductId !==
+            existingOrderItem.productId;
+
+        const product =
+            await this.prisma.product.findUnique({
+                where: {
+                    id: targetProductId,
+                },
+
+                include: {
+                    colors: {
+                        where: {
+                            isActive: true,
+                        },
+
+                        orderBy: {
+                            sortOrder: 'asc',
+                        },
+                    },
+                },
+            });
 
         if (!product) {
-            throw new NotFoundException('Product not found.');
+            throw new NotFoundException(
+                'Product not found.',
+            );
         }
 
         const quantity =
             updateOrderItemDto.quantity ??
             existingOrderItem.quantity;
 
-        const unitPrice =
-            await getEffectiveProductPrice(
-                this.prisma,
-                order.customerId,
-                product.id,
-            );
+        let colorId =
+            existingOrderItem.colorId;
 
-        if (unitPrice === null) {
-            throw new NotFoundException(
-                'Product not found.',
-            );
+        let colorNameSnapshot =
+            existingOrderItem.colorNameSnapshot;
+
+        /*
+         * Product changed:
+         * the selected color must be valid for the new product.
+         */
+        if (productChanged) {
+
+            if (product.colors.length > 0) {
+
+                if (updateOrderItemDto.colorId === undefined) {
+                    throw new BadRequestException(
+                        'A color must be selected for this product.',
+                    );
+                }
+
+                const selectedColor =
+                    product.colors.find(
+                        (color) =>
+                            color.id ===
+                            updateOrderItemDto.colorId,
+                    );
+
+                if (!selectedColor) {
+                    throw new BadRequestException(
+                        'Selected color is not active or does not belong to this product.',
+                    );
+                }
+
+                colorId = selectedColor.id;
+                colorNameSnapshot = selectedColor.name;
+
+            } else {
+
+                if (updateOrderItemDto.colorId !== undefined) {
+                    throw new BadRequestException(
+                        'This product does not have an active color selection.',
+                    );
+                }
+
+                colorId = null;
+                colorNameSnapshot = null;
+            }
+
+            /*
+             * Same product, but user explicitly changed the color.
+             */
+        } else if (updateOrderItemDto.colorId !== undefined) {
+
+            const selectedColor =
+                product.colors.find(
+                    (color) =>
+                        color.id ===
+                        updateOrderItemDto.colorId,
+                );
+
+            if (!selectedColor) {
+                throw new BadRequestException(
+                    'Selected color is not active or does not belong to this product.',
+                );
+            }
+
+            colorId = selectedColor.id;
+            colorNameSnapshot = selectedColor.name;
+        }
+
+        /*
+         * Preserve the historical unit price unless
+         * the product itself was changed.
+         */
+        let unitPrice =
+            existingOrderItem.unitPrice;
+
+        if (productChanged) {
+
+            const effectivePrice =
+                await getEffectiveProductPrice(
+                    this.prisma,
+                    order.customerId,
+                    product.id,
+                );
+
+            if (effectivePrice === null) {
+                throw new NotFoundException(
+                    'Product not found.',
+                );
+            }
+
+            unitPrice = effectivePrice;
         }
 
         const lineTotal =
@@ -180,15 +345,23 @@ export class OrderItemsService {
                 },
 
                 data: {
-                    productId: updateOrderItemDto.productId,
+                    productId: targetProductId,
+
+                    colorId,
+
+                    colorNameSnapshot,
+
                     quantity,
+
                     unitPrice,
+
                     lineTotal,
                 },
 
                 include: {
                     order: true,
                     product: true,
+                    color: true,
                 },
             });
 
@@ -201,9 +374,13 @@ export class OrderItemsService {
     }
 
     async remove(id: number) {
-        const orderItem = await this.prisma.orderItem.findUnique({
-            where: { id },
-        });
+
+        const orderItem =
+            await this.prisma.orderItem.findUnique({
+                where: {
+                    id,
+                },
+            });
 
         if (!orderItem) {
             throw new NotFoundException(
@@ -217,7 +394,9 @@ export class OrderItemsService {
         );
 
         await this.prisma.orderItem.delete({
-            where: { id },
+            where: {
+                id,
+            },
         });
 
         await recalculateOrderTotals(
@@ -226,7 +405,8 @@ export class OrderItemsService {
         );
 
         return {
-            message: 'Order item deleted successfully.',
+            message:
+                'Order item deleted successfully.',
         };
     }
 }

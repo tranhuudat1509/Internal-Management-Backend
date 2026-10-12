@@ -7,25 +7,26 @@ export async function getOrderWithDetails(
     id: number,
 ) {
     const order = await prisma.order.findUnique({
-
         where: {
             id,
         },
 
         include: {
-
             customer: true,
 
             items: {
+                orderBy: {
+                    id: 'asc',
+                },
+
                 include: {
                     product: true,
+                    color: true,
                 },
             },
 
             payments: true,
-
         },
-
     });
 
     if (!order) {

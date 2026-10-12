@@ -107,13 +107,20 @@ model ProductColor {
 
   sortOrder Int @default(0)
 
+  // Colorway lifecycle
+  isActive  Boolean   @default(true)
+  retiredAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   images ProductImage[]
 
+  orderItems OrderItem[]
+
   @@unique([productId, name])
   @@index([productId])
+  @@index([productId, isActive])
 }
 
 model ProductImage {
@@ -181,6 +188,15 @@ model OrderItem {
   productId Int
   product   Product @relation(fields: [productId], references: [id])
 
+  // Selected product color for this sale.
+  // colorId links back to the persistent colorway record.
+  colorId Int?
+  color   ProductColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
+
+  // Snapshot preserves exactly what the color was called
+  // when this order was created, even if renamed later.
+  colorNameSnapshot String?
+
   quantity Int
 
   unitPrice Float
@@ -189,6 +205,8 @@ model OrderItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([colorId])
 }
 
 model Payment {

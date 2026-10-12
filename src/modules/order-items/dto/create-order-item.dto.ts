@@ -1,9 +1,13 @@
 import {
     IsInt,
+    IsOptional,
     Min,
 } from 'class-validator';
 
-import { ApiProperty } from '@nestjs/swagger';
+import {
+    ApiProperty,
+    ApiPropertyOptional,
+} from '@nestjs/swagger';
 
 export class CreateOrderItemDto {
 
@@ -20,6 +24,16 @@ export class CreateOrderItemDto {
     @IsInt()
     @Min(1)
     productId!: number;
+
+    @ApiPropertyOptional({
+        example: 5,
+        description:
+            'Selected product color ID. Leave empty when the product has no color selection.',
+    })
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    colorId?: number;
 
     @ApiProperty({
         example: 5,

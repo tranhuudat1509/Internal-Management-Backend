@@ -1,17 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
+import { OrderStatus } from '@prisma/client';
 
 import { PrismaService } from '../../database/prisma.service';
 
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+
 import { calculateOrderFinancialSummary } from './helpers/order-financial-summary';
 import { recalculateOrderTotals } from './helpers/recalculate-order';
-import { OrderStatus } from '@prisma/client';
 import { ensureOrderEditable } from './helpers/ensure-order-editable';
 import { getEffectiveProductPrice } from './helpers/get-effective-product-price';
 import { calculateOrderItemTotal } from './helpers/calculate-order-item-total';
-import { getOrderWithDetails }
-  from './helpers/get-order-with-details';
+import { getOrderWithDetails } from './helpers/get-order-with-details';
 
 @Injectable()
 export class OrdersService {
@@ -22,9 +27,14 @@ export class OrdersService {
       include: {
         customer: true,
         items: {
+          orderBy: {
+            id: 'asc',
+          },
+
           include: {
             product: true,
-          }
+            color: true,
+          },
         },
         payments: true,
       },
@@ -40,11 +50,10 @@ export class OrdersService {
   }
 
   async findOne(id: number) {
-    const order =
-      await getOrderWithDetails(
-        this.prisma,
-        id,
-      );
+    const order = await getOrderWithDetails(
+      this.prisma,
+      id,
+    );
 
     const financialSummary = calculateOrderFinancialSummary(
       order.total,
@@ -58,7 +67,6 @@ export class OrdersService {
   }
 
   async create(createOrderDto: CreateOrderDto) {
-
     const customer = await this.prisma.customer.findUnique({
       where: {
         id: createOrderDto.customerId,
@@ -73,23 +81,70 @@ export class OrdersService {
 
     const orderItems: {
       productId: number;
+      colorId: number | null;
+      colorNameSnapshot: string | null;
       quantity: number;
       unitPrice: number;
       lineTotal: number;
     }[] = [];
 
     for (const item of createOrderDto.items) {
-      const product =
-        await this.prisma.product.findUnique({
-          where: {
-            id: item.productId,
+      const product = await this.prisma.product.findUnique({
+        where: {
+          id: item.productId,
+        },
+
+        include: {
+          colors: {
+            where: {
+              isActive: true,
+            },
+
+            orderBy: {
+              sortOrder: 'asc',
+            },
           },
-        });
+        },
+      });
 
       if (!product) {
         throw new NotFoundException(
           `Product ${item.productId} not found.`,
         );
+      }
+
+      let colorId: number | null = null;
+      let colorNameSnapshot: string | null = null;
+
+      /*
+       * If the product currently has active colorways,
+       * a color must be selected for the order.
+       */
+      if (
+        product.colors.length > 0 &&
+        item.colorId === undefined
+      ) {
+        throw new BadRequestException(
+          `A color must be selected for product ${product.code}.`,
+        );
+      }
+
+      /*
+       * Validate the chosen color.
+       */
+      if (item.colorId !== undefined) {
+        const selectedColor = product.colors.find(
+          (color) => color.id === item.colorId,
+        );
+
+        if (!selectedColor) {
+          throw new BadRequestException(
+            `Color ${item.colorId} is not an active color for product ${product.code}.`,
+          );
+        }
+
+        colorId = selectedColor.id;
+        colorNameSnapshot = selectedColor.name;
       }
 
       const unitPrice = await getEffectiveProductPrice(
@@ -111,6 +166,8 @@ export class OrdersService {
 
       orderItems.push({
         productId: product.id,
+        colorId,
+        colorNameSnapshot,
         quantity: item.quantity,
         unitPrice,
         lineTotal,
@@ -130,15 +187,18 @@ export class OrdersService {
           OrderStatus.IN_PROGRESS,
 
         deliveryDate:
-          createOrderDto.status === OrderStatus.DELIVERED
+          createOrderDto.status ===
+            OrderStatus.DELIVERED
             ? new Date()
             : null,
 
         notes: createOrderDto.notes,
 
-        discount: createOrderDto.discount ?? 0,
+        discount:
+          createOrderDto.discount ?? 0,
 
-        taxRate: createOrderDto.taxRate ?? 0,
+        taxRate:
+          createOrderDto.taxRate ?? 0,
 
         items: {
           create: orderItems,
@@ -155,11 +215,10 @@ export class OrdersService {
   }
 
   async getDetails(id: number) {
-    const order =
-      await getOrderWithDetails(
-        this.prisma,
-        id,
-      );
+    const order = await getOrderWithDetails(
+      this.prisma,
+      id,
+    );
 
     const financialSummary =
       calculateOrderFinancialSummary(
@@ -169,7 +228,6 @@ export class OrdersService {
 
     const itemsSummary =
       order.items.map((item) => ({
-
         productId: item.product.id,
 
         code: item.product.code,
@@ -178,40 +236,43 @@ export class OrdersService {
 
         unit: item.product.unit,
 
+        colorId: item.colorId,
+
+        colorName:
+          item.colorNameSnapshot,
+
         quantity: item.quantity,
 
         unitPrice: item.unitPrice,
 
         lineTotal: item.lineTotal,
-
       }));
 
     const paymentsSummary =
       order.payments.map((payment) => ({
-
         id: payment.id,
 
-        paymentDate: payment.paymentDate,
+        paymentDate:
+          payment.paymentDate,
 
         amount: payment.amount,
 
-        paymentMethod: payment.paymentMethod,
+        paymentMethod:
+          payment.paymentMethod,
 
         notes: payment.notes,
-
       }));
 
     return {
-
       order: {
-
         id: order.id,
 
         status: order.status,
 
         orderDate: order.orderDate,
 
-        deliveryDate: order.deliveryDate,
+        deliveryDate:
+          order.deliveryDate,
 
         subtotal: order.subtotal,
 
@@ -219,12 +280,12 @@ export class OrdersService {
 
         taxRate: order.taxRate,
 
-        taxAmount: order.taxAmount,
+        taxAmount:
+          order.taxAmount,
 
         total: order.total,
 
         notes: order.notes,
-
       },
 
       customer: order.customer,
@@ -234,32 +295,44 @@ export class OrdersService {
       items: itemsSummary,
 
       payments: paymentsSummary,
-
     };
   }
 
-  async update(id: number, updateOrderDto: UpdateOrderDto) {
+  async update(
+    id: number,
+    updateOrderDto: UpdateOrderDto,
+  ) {
+    const existingOrder =
+      await ensureOrderEditable(
+        this.prisma,
+        id,
+      );
 
-    const existingOrder = await ensureOrderEditable(
-      this.prisma,
-      id,
-    );
+    let status =
+      existingOrder.status;
 
-    let status = existingOrder.status;
-    let deliveryDate = existingOrder.deliveryDate;
+    let deliveryDate =
+      existingOrder.deliveryDate;
 
-    if (updateOrderDto.status !== undefined) {
-
-      status = updateOrderDto.status;
+    if (
+      updateOrderDto.status !== undefined
+    ) {
+      status =
+        updateOrderDto.status;
 
       if (
-        status === OrderStatus.DELIVERED &&
-        existingOrder.status !== OrderStatus.DELIVERED
+        status ===
+        OrderStatus.DELIVERED &&
+        existingOrder.status !==
+        OrderStatus.DELIVERED
       ) {
         deliveryDate = new Date();
       }
 
-      if (status !== OrderStatus.DELIVERED) {
+      if (
+        status !==
+        OrderStatus.DELIVERED
+      ) {
         deliveryDate = null;
       }
     }
@@ -270,16 +343,23 @@ export class OrdersService {
       },
 
       data: {
-        orderDate: updateOrderDto.orderDate
-          ? new Date(updateOrderDto.orderDate)
-          : undefined,
+        orderDate:
+          updateOrderDto.orderDate
+            ? new Date(
+              updateOrderDto.orderDate,
+            )
+            : undefined,
 
         status,
         deliveryDate,
 
         notes: updateOrderDto.notes,
-        discount: updateOrderDto.discount,
-        taxRate: updateOrderDto.taxRate,
+
+        discount:
+          updateOrderDto.discount,
+
+        taxRate:
+          updateOrderDto.taxRate,
       },
     });
 
@@ -292,15 +372,10 @@ export class OrdersService {
   }
 
   async remove(id: number) {
-    const order = await this.prisma.order.findUnique({
-      where: {
-        id,
-      },
-    });
-
-    if (!order) {
-      throw new NotFoundException('Order not found.');
-    }
+    await ensureOrderEditable(
+      this.prisma,
+      id,
+    );
 
     return this.prisma.order.delete({
       where: {

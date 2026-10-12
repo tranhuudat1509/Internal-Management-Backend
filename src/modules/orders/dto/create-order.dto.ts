@@ -1,16 +1,15 @@
 import {
+  ArrayMinSize,
   IsArray,
   IsDateString,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
-  ValidateNested,
-  Min,
   Max,
-  ArrayMinSize,
-  IsBoolean,
-  IsEnum,
+  Min,
+  ValidateNested,
 } from 'class-validator';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -26,6 +25,16 @@ export class CreateOrderItemDto {
   @IsInt()
   @Min(1)
   productId!: number;
+
+  @ApiPropertyOptional({
+    example: 5,
+    description:
+      'Selected product color ID. Leave empty when the product has no color selection.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  colorId?: number;
 
   @ApiProperty({
     example: 3,
@@ -87,6 +96,7 @@ export class CreateOrderDto {
     example: [
       {
         productId: 1,
+        colorId: 3,
         quantity: 2,
       },
     ],
